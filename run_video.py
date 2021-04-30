@@ -3,6 +3,7 @@ import logging
 import time
 
 import cv2
+import csv
 import numpy as np
 
 from tf_pose.estimator import TfPoseEstimator
@@ -34,15 +35,31 @@ if __name__ == '__main__':
     e = TfPoseEstimator(get_graph_path(args.model), target_size=(w, h))
     cap = cv2.VideoCapture(args.video)
 
+    csvfile = open('D:/AimeeImageResults/bodypartsfromvideo.csv', 'w', newline='')
+    myFields = ['frameNumber', 'personNumber', 'partNumber', 'xCoordinate', 'yCoordinate', 'score']
+    partwriter = csv.DictWriter(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL, fieldnames=myFields)
+    partwriter.writeheader()
+    framenum = 0
+    
     if cap.isOpened() is False:
         print("Error opening video stream or file")
     while cap.isOpened():
         ret_val, image = cap.read()
+        humans = e.inference(image, upsample_size=6.0)#Estimate # of people to look for. HIGHER=SLOWER
 
-        humans = e.inference(image)
+        for personNum in range(len(humans)):
+            for partKey, part in humans[personNum].body_parts.items():
+               partwriter.writerow({'frameNumber':framenum,
+                                    'personNumber':personNum,
+                                    'partNumber':partKey,
+                                    'xCoordinate':part.x,
+                                    'yCoordinate':part.y,
+                                    'score':part.score})
+
         if not args.showBG:
             image = np.zeros(image.shape)
         image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
+        framenum+=1
 
         cv2.putText(image, "FPS: %f" % (1.0 / (time.time() - fps_time)), (10, 10),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         cv2.imshow('tf-pose-estimation result', image)

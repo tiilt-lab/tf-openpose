@@ -1,12 +1,17 @@
 import argparse
 import logging
 import time
+import csv
 
 import cv2
 import numpy as np
 
 from tf_pose.estimator import TfPoseEstimator
 from tf_pose.networks import get_graph_path, model_wh
+
+
+#py -3.6 run_webcam.py --model=mobilenet_thin --resize=432x368 --camera=0
+
 
 logger = logging.getLogger('TfPoseEstimator-WebCam')
 logger.setLevel(logging.DEBUG)
@@ -44,24 +49,49 @@ if __name__ == '__main__':
     ret_val, image = cam.read()
     logger.info('cam image=%dx%d' % (image.shape[1], image.shape[0]))
 
-    while True:
-        ret_val, image = cam.read()
 
-        logger.debug('image process+')
-        humans = e.inference(image, resize_to_default=(w > 0 and h > 0), upsample_size=args.resize_out_ratio)
 
-        logger.debug('postprocess+')
-        image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
+    with open('bodyparts.csv', 'w', newline='') as csvfile:
+        myFields = ['frameNumber', 'personNumber', 'partNumber', 'xCoordinate', 'yCoordinate', 'score']
+        partwriter = csv.DictWriter(csvfile, delimiter=' ', quotechar='|', quoting=csv.QUOTE_MINIMAL, fieldnames=myFields)
+        partwriter.writeheader()
+        frameNum = 0
+        
+        while True:
+            ret_val, image = cam.read()
 
-        logger.debug('show+')
-        cv2.putText(image,
-                    "FPS: %f" % (1.0 / (time.time() - fps_time)),
-                    (10, 10),  cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                    (0, 255, 0), 2)
-        cv2.imshow('tf-pose-estimation result', image)
-        fps_time = time.time()
-        if cv2.waitKey(1) == 27:
-            break
-        logger.debug('finished+')
+            logger.debug('image process+')
+            humans = e.inference(image, resize_to_default=(w > 0 and h > 0), upsample_size=args.resize_out_ratio)
 
+            logger.debug('postprocess+')
+            image = TfPoseEstimator.draw_humans(image, humans, imgcopy=False)
+
+
+
+            for personNum in range(len(humans)):
+                for partKey, part in humans[personNum].body_parts.items():
+                   partNum = partKey
+                   partwriter.writerow({'frameNumber':frameNum,
+                                        'personNumber':personNum,
+                                        'partNumber':partNum,
+                                        'xCoordinate':part.x,
+                                        'yCoordinate':part.y,
+                                        'score':part.score})
+            frameNum+=1
+            
+
+            
+            logger.debug('show+')
+            cv2.putText(image,
+                        "FPS: %f" % (1.0 / (time.time() - fps_time)),
+                        (10, 10),  cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (0, 255, 0), 2)
+            cv2.imshow('tf-pose-estimation result', image)
+            fps_time = time.time()
+            if cv2.waitKey(1) == 27:
+                break
+            logger.debug('finished+')
+        
+
+    
     cv2.destroyAllWindows()
